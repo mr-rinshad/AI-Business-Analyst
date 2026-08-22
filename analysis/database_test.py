@@ -1,6 +1,6 @@
 import os
-import mysql.connector
-from dotenv import load_dotenv
+import mysql.connector # type: ignore
+from dotenv import load_dotenv # type: ignore
 
 load_dotenv()
 
