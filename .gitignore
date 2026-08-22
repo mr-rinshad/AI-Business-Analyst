@@ -1,0 +1,41 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Secrets & Environment Variables
+.env
+.env.*
+*.env
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# FastAPI / Testing / Tooling Caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Data Files & Local Databases (exclude raw files/local testing DBs)
+data/*.csv
+data/*.xlsx
+data/*.json
+data/*.sqlite
+data/*.db
+*.sqlite3
+
+# IDE & Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Files
+.DS_Store
+Thumbs.db
