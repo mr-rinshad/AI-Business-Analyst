@@ -142,6 +142,42 @@ def analyze_customer_revenue(df):
     return customer_revenue
 
 
+def analyze_monthly_category_revenue(df):
+
+    connection = get_connection()
+
+    products_query = "SELECT * FROM products"
+
+    products_df = pd.read_sql(
+        products_query,
+        connection
+    )
+
+    connection.close()
+
+    df = df.copy()
+
+    df["order_date"] = pd.to_datetime(
+        df["order_date"]
+    )
+
+    df["month"] = df["order_date"].dt.month
+
+    merged_df = df.merge(
+        products_df,
+        on="product_id",
+        how="left"
+    )
+
+    result = (
+        merged_df
+        .groupby(["month", "category"])["sales"]
+        .sum()
+        .reset_index()
+        .rename(columns={"sales": "revenue"})
+    )
+
+    return result
 
 if __name__ == "__main__":
 
