@@ -1,26 +1,37 @@
 from analysis.sql_generator import generate_sql
 from analysis.sql_executor import execute_sql
+from analysis.answer_generator import generate_answer
 
 
 def ask_database(question):
 
-    # Step 1: Convert question to SQL
+    # Step 1: Generate SQL
     sql = generate_sql(question)
 
     print("\nGenerated SQL:")
     print(sql)
 
-    # Step 2: Execute SQL safely
+    # Step 2: Execute SQL
     result = execute_sql(sql)
 
-    return result
+    print("\nDatabase Result:")
+    print(result)
+
+    # Step 3: Generate business answer
+    answer = generate_answer(
+        question,
+        sql,
+        result
+    )
+
+    return answer
 
 
 if __name__ == "__main__":
 
-    question = "What is our total profit?"
+    question = "Which category generated the highest revenue?"
 
-    result = ask_database(question)
+    answer = ask_database(question)
 
-    print("\nResult:")
-    print(result)
+    print("\nBusiness Answer:")
+    print(answer)
