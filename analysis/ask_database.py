@@ -1,6 +1,7 @@
 from analysis.sql_generator import generate_sql
 from analysis.sql_executor import execute_sql
 from analysis.answer_generator import generate_answer
+from analysis.visualization_engine import visualize_result
 
 
 def ask_database(question):
@@ -24,14 +25,27 @@ def ask_database(question):
         result
     )
 
-    return answer
+    # Step 4: Create visualization
+    chart_path = visualize_result(
+        question,
+        result
+    )
+
+    return {
+        "answer": answer,
+        "data": result,
+        "chart": chart_path
+    }
 
 
 if __name__ == "__main__":
 
-    question = "Which category generated the highest revenue?"
+    question = "Show revenue by category"
 
-    answer = ask_database(question)
+    response = ask_database(question)
 
     print("\nBusiness Answer:")
-    print(answer)
+    print(response["answer"])
+
+    print("\nChart:")
+    print(response["chart"])
