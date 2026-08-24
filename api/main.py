@@ -1,6 +1,13 @@
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+OUTPUTS_DIR = BASE_DIR / "outputs"
 
 from analysis.sql_generator import generate_sql
 from analysis.sql_executor import execute_sql
@@ -13,6 +20,7 @@ from analysis.investigation_answer import (
 )
 
 
+
 app = FastAPI(
     title="AI Business Analyst API",
     description="AI-powered business analytics assistant",
@@ -20,14 +28,31 @@ app = FastAPI(
 )
 
 
+
+# --------------------------------
+# CORS Configuration
+# --------------------------------
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173"
+    ],
+
     allow_credentials=True,
+
     allow_methods=["*"],
+
     allow_headers=["*"]
 )
 
+app.mount(
+    "/outputs",
+    StaticFiles(directory=str(OUTPUTS_DIR)),
+    name="outputs"
+)
 
 class QuestionRequest(BaseModel):
 
@@ -68,6 +93,10 @@ def convert_to_json_safe(data):
     return data
 
 
+# --------------------------------
+# Root
+# --------------------------------
+
 @app.get("/")
 def root():
 
@@ -75,6 +104,10 @@ def root():
         "message": "AI Business Analyst API is running"
     }
 
+
+# --------------------------------
+# Ask Business Question
+# --------------------------------
 
 @app.post("/ask")
 def ask_business_question(
@@ -92,7 +125,12 @@ def ask_business_question(
 
     try:
 
+        # --------------------------------
+        # Detect Intent
+        # --------------------------------
+
         intent = detect_intent(question)
+
 
         # --------------------------------
         # INVESTIGATION
@@ -112,12 +150,16 @@ def ask_business_question(
 
             return {
                 "question": question,
+
                 "intent": intent,
+
                 "answer": answer,
+
                 "analysis": convert_to_json_safe(
                     investigation
                 )
             }
+
 
         # --------------------------------
         # NORMAL QUERY
@@ -125,7 +167,9 @@ def ask_business_question(
 
         sql = generate_sql(question)
 
+
         result = execute_sql(sql)
+
 
         answer = generate_answer(
             question,
@@ -133,29 +177,49 @@ def ask_business_question(
             result
         )
 
+
         chart = visualize_result(
             question,
             result
         )
+        chart_url = None
+
+        if chart:
+            chart_url = (
+                "http://127.0.0.1:8000/"
+                 + chart.replace("\\", "/")
+          )
 
         data = convert_to_json_safe(
             result
         )
 
+
         return {
+
             "question": question,
+
             "intent": intent,
+
             "sql": sql,
+
             "data": data,
+
             "answer": answer,
-            "chart": chart
+
+            "chart": chart_url
+
         }
+
 
     except Exception as error:
 
         print("ERROR:", error)
 
         raise HTTPException(
+
             status_code=500,
+
             detail="Unable to process the business question."
+
         )
