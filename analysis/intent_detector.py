@@ -9,8 +9,10 @@ def detect_intent(question):
         "decline",
         "drop",
         "decrease",
-        "increased",
-        "increase"
+        "decreased",
+        "fell",
+        "fall",
+        "down"
     ]
 
     for keyword in investigation_keywords:

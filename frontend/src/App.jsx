@@ -27,7 +27,13 @@ function App() {
     setAnswer("");
     setResult(null);
 
+
     try {
+
+      setLoading(true);
+
+      setError("");
+
 
       const response = await fetch(
         "http://127.0.0.1:8000/ask",
@@ -45,40 +51,44 @@ function App() {
       );
 
 
+      const data = await response.json();
+
+
+      console.log("API Response:", data);
+
+
       if (!response.ok) {
 
         throw new Error(
-          "Failed to analyze the question."
+          data.detail ||
+          "Unable to process the question."
         );
 
       }
 
 
-      const data = await response.json();
-
-      console.log("API Response:", data);
-
-
-      // Store the complete backend response
       setResult(data);
 
-      // Store the answer separately
       setAnswer(data.answer);
 
 
     } catch (error) {
 
-      console.error(error);
+      console.error("Error:", error);
+
 
       setError(
+        error.message ||
         "Unable to connect to the AI Business Analyst."
       );
+
 
     } finally {
 
       setLoading(false);
 
     }
+
   };
 
 
@@ -117,6 +127,7 @@ function App() {
             <div className="examples">
 
               <p>Try asking:</p>
+
 
               <button
                 type="button"
@@ -214,21 +225,23 @@ function App() {
           </section>
 
         )}
-        
+
+
         {result?.chart && (
 
           <section className="chart-section">
 
-           <h2>Visualization</h2>
+            <h2>Visualization</h2>
 
-          <img
-            src={result.chart}
-             alt="Business analysis chart"
+            <img
+              src={result.chart}
+              alt="Business analysis chart"
             />
 
-           </section>
+          </section>
 
-           )}
+        )}
+
 
         {result?.sql && (
 
@@ -270,5 +283,6 @@ function App() {
   );
 
 }
+
 
 export default App;
