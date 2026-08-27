@@ -1,4 +1,5 @@
 from pathlib import Path
+from decimal import Decimal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,12 +17,14 @@ from analysis.sql_executor import execute_sql
 from analysis.answer_generator import generate_answer
 from analysis.visualization_engine import visualize_result
 from analysis.intent_detector import detect_intent
-from analysis.business_analysis import investigate_revenue_drop
+
+from analysis.business_analysis import (
+    investigate_revenue_change,
+    extract_month
+)
+
 from analysis.investigation_answer import (
     generate_investigation_answer
-)
-from analysis.month_detector import (
-    get_investigation_months
 )
 
 
@@ -95,6 +98,10 @@ def convert_to_json_safe(data):
             for value in data
         ]
 
+    if isinstance(data, Decimal):
+
+        return float(data)
+
     if hasattr(data, "item"):
 
         return data.item()
@@ -147,57 +154,40 @@ def ask_business_question(
 
         if intent == "investigation":
 
-            previous_month, current_month = (
-                get_investigation_months(question)
-            )
-
+            current_month = extract_month(question)
 
             if current_month is None:
 
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        "Please specify the month you want "
-                        "to investigate. Example: Why did "
-                        "revenue drop in February?"
+                        "Please specify a month, "
+                        "for example: "
+                        "'Why did revenue change in March?'"
                     )
                 )
 
+            previous_month = (
+                12
+                if current_month == 1
+                else current_month - 1
+            )
 
-            if previous_month is None:
-
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "January investigation currently "
-                        "requires previous-year data. "
-                        "Please choose February or a later month."
-                    )
-                )
-
-
-            investigation = investigate_revenue_drop(
+            investigation = investigate_revenue_change(
                 previous_month,
                 current_month
             )
-
 
             answer = generate_investigation_answer(
                 question,
                 investigation
             )
 
-
             return {
 
                 "question": question,
 
                 "intent": intent,
-
-                "comparison": {
-                    "previous_month": previous_month,
-                    "current_month": current_month
-                },
 
                 "answer": answer,
 

@@ -1,412 +1,741 @@
-import pandas as pd
-from analysis.analysis_engine import (
-    load_orders,
-    analyze_monthly_revenue,
-    analyze_monthly_category_revenue,
-    get_connection
-)
+import re
 
-def analyze_revenue_drop():
+from analysis.analysis_engine import get_connection
 
-    orders = load_orders()
 
-    monthly_revenue = analyze_monthly_revenue(
-        orders
-    )
+# --------------------------------
+# Calculate Percentage Change
+# --------------------------------
 
-    return monthly_revenue
+def calculate_percentage_change(previous, current):
 
-def find_largest_revenue_drop(monthly_revenue):
-
-    valid_changes = monthly_revenue.dropna(
-        subset=["revenue_change"]
-    )
-
-    if valid_changes.empty:
+    if previous is None or current is None:
         return None
 
-    largest_drop = valid_changes.loc[
-        valid_changes["revenue_change"].idxmin()
-    ]
-
-    return largest_drop
-
-
-def get_category_changes(
-    orders,
-    previous_month,
-    current_month
-):
-
-    monthly_category = (
-        analyze_monthly_category_revenue(
-            orders
-        )
-    )
-
-    previous = monthly_category[
-        monthly_category["month"] == previous_month
-    ]
-
-    current = monthly_category[
-        monthly_category["month"] == current_month
-    ]
-
-    comparison = previous.merge(
-        current,
-        on="category",
-        how="outer",
-        suffixes=("_previous", "_current")
-    )
-
-    comparison["revenue_previous"] = (
-        comparison["revenue_previous"]
-        .fillna(0)
-    )
-
-    comparison["revenue_current"] = (
-        comparison["revenue_current"]
-        .fillna(0)
-    )
-
-    comparison["revenue_change"] = (
-        comparison["revenue_current"]
-        -
-        comparison["revenue_previous"]
-    )
-
-    return comparison.sort_values(
-        "revenue_change"
-    )
-
-
-def compare_revenue(
-    monthly_revenue,
-    previous_month,
-    current_month
-):
-
-    previous = monthly_revenue[
-        monthly_revenue["month"] == previous_month
-    ]
-
-    current = monthly_revenue[
-        monthly_revenue["month"] == current_month
-    ]
-
-    if previous.empty or current.empty:
+    if previous == 0:
         return None
 
-    previous_revenue = previous.iloc[0]["revenue"]
-    current_revenue = current.iloc[0]["revenue"]
-
-    revenue_change = (
-        current_revenue - previous_revenue
-    )
-
-    percentage_change = (
-        revenue_change / previous_revenue
+    return (
+        (current - previous) / previous
     ) * 100
 
-    return {
-        "previous_month": previous_month,
-        "current_month": current_month,
-        "previous_revenue": previous_revenue,
-        "current_revenue": current_revenue,
-        "revenue_change": revenue_change,
-        "percentage_change": percentage_change
+
+# --------------------------------
+# Extract Month From Question
+# --------------------------------
+
+def extract_month(question):
+
+    question = question.lower()
+
+    months = {
+        "january": 1,
+        "february": 2,
+        "march": 3,
+        "april": 4,
+        "may": 5,
+        "june": 6,
+        "july": 7,
+        "august": 8,
+        "september": 9,
+        "october": 10,
+        "november": 11,
+        "december": 12
     }
 
-def calculate_category_contribution(
-    category_changes,
-    total_revenue_change
+    for month_name, month_number in months.items():
+
+        if month_name in question:
+            return month_number
+
+    return None
+
+
+# --------------------------------
+# Get Previous Month
+# --------------------------------
+
+def get_previous_month(month):
+
+    if month == 1:
+        return 12
+
+    return month - 1
+
+
+# --------------------------------
+# Get Monthly Metrics
+# --------------------------------
+
+def get_monthly_metrics(
+    connection,
+    month
 ):
 
-    result = category_changes.copy()
+    query = """
+        SELECT
 
-    if total_revenue_change >= 0:
-        return result
+            COALESCE(
+                SUM(sales),
+                0
+            ) AS revenue,
 
-    result["contribution"] = (
-        result["revenue_change"]
-        / total_revenue_change
-    ) * 100
+            COUNT(order_id)
+            AS total_orders,
+
+            COALESCE(
+                SUM(quantity),
+                0
+            ) AS total_quantity,
+
+            COALESCE(
+                SUM(sales) /
+                NULLIF(COUNT(order_id), 0),
+                0
+            ) AS average_order_value,
+
+            COALESCE(
+                SUM(profit),
+                0
+            ) AS total_profit
+
+        FROM orders
+
+        WHERE MONTH(order_date) = %s
+    """
+
+    cursor = connection.cursor(
+        dictionary=True
+    )
+
+    cursor.execute(
+        query,
+        (month,)
+    )
+
+    result = cursor.fetchone()
+
+    cursor.close()
 
     return result
 
 
-def find_top_declining_category(
-    category_contribution
+# --------------------------------
+# Compare Two Months
+# --------------------------------
+
+def compare_months(
+    connection,
+    previous_month,
+    current_month
 ):
 
-    declining = category_contribution[
-        category_contribution["revenue_change"] < 0
-    ]
+    previous = get_monthly_metrics(
+        connection,
+        previous_month
+    )
 
-    if declining.empty:
+    current = get_monthly_metrics(
+        connection,
+        current_month
+    )
+
+    if previous is None or current is None:
         return None
 
-    return declining.iloc[0]
+    revenue_change = (
+        current["revenue"]
+        -
+        previous["revenue"]
+    )
 
-def analyze_customer_changes(
-    orders,
+    revenue_percentage_change = (
+        calculate_percentage_change(
+            previous["revenue"],
+            current["revenue"]
+        )
+    )
+
+    orders_change = (
+        current["total_orders"]
+        -
+        previous["total_orders"]
+    )
+
+    quantity_change = (
+        current["total_quantity"]
+        -
+        previous["total_quantity"]
+    )
+
+    aov_change = (
+        current["average_order_value"]
+        -
+        previous["average_order_value"]
+    )
+
+    profit_change = (
+        current["total_profit"]
+        -
+        previous["total_profit"]
+    )
+
+    return {
+
+        "previous": previous,
+
+        "current": current,
+
+        "revenue_change":
+            revenue_change,
+
+        "revenue_percentage_change":
+            revenue_percentage_change,
+
+        "orders_change":
+            orders_change,
+
+        "quantity_change":
+            quantity_change,
+
+        "aov_change":
+            aov_change,
+
+        "profit_change":
+            profit_change
+    }
+
+
+# --------------------------------
+# Category Changes
+# --------------------------------
+
+def get_category_changes(
+    connection,
+    previous_month,
+    current_month
+):
+
+    query = """
+
+        SELECT
+
+            p.category,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS previous_revenue,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS current_revenue,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            )
+            -
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS revenue_change
+
+        FROM orders o
+
+        JOIN products p
+            ON o.product_id = p.product_id
+
+        WHERE MONTH(o.order_date)
+        IN (%s, %s)
+
+        GROUP BY p.category
+
+        ORDER BY revenue_change ASC
+    """
+
+    cursor = connection.cursor(
+        dictionary=True
+    )
+
+    cursor.execute(
+        query,
+        (
+            previous_month,
+            current_month,
+            current_month,
+            previous_month,
+            previous_month,
+            current_month
+        )
+    )
+
+    result = cursor.fetchall()
+
+    cursor.close()
+
+    return result
+
+
+# --------------------------------
+# Identify Category Drivers
+# --------------------------------
+
+def identify_category_drivers(
+    category_changes
+):
+
+    declining = [
+        row
+        for row in category_changes
+        if row["revenue_change"] < 0
+    ]
+
+    increasing = [
+        row
+        for row in category_changes
+        if row["revenue_change"] > 0
+    ]
+
+    declining.sort(
+        key=lambda row:
+        row["revenue_change"]
+    )
+
+    increasing.sort(
+        key=lambda row:
+        row["revenue_change"],
+        reverse=True
+    )
+
+    return {
+
+        "declining_categories":
+            declining,
+
+        "growing_categories":
+            increasing
+    }
+
+
+# --------------------------------
+# Customer Changes
+# --------------------------------
+
+def get_customer_changes(
+    connection,
+    previous_month,
+    current_month
+):
+
+    query = """
+
+        SELECT
+
+            c.customer_id,
+
+            c.customer_name,
+
+            c.region,
+
+            c.segment,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS previous_revenue,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS current_revenue,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            )
+            -
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS revenue_change
+
+        FROM orders o
+
+        JOIN customers c
+            ON o.customer_id = c.customer_id
+
+        WHERE MONTH(o.order_date)
+        IN (%s, %s)
+
+        GROUP BY
+
+            c.customer_id,
+            c.customer_name,
+            c.region,
+            c.segment
+
+        ORDER BY revenue_change ASC
+    """
+
+    cursor = connection.cursor(
+        dictionary=True
+    )
+
+    cursor.execute(
+        query,
+        (
+            previous_month,
+            current_month,
+            current_month,
+            previous_month,
+            previous_month,
+            current_month
+        )
+    )
+
+    result = cursor.fetchall()
+
+    cursor.close()
+
+    return result
+
+
+# --------------------------------
+# Identify Customer Drivers
+# --------------------------------
+
+def identify_customer_drivers(
+    customer_changes
+):
+
+    declining = [
+        row
+        for row in customer_changes
+        if row["revenue_change"] < 0
+    ]
+
+    increasing = [
+        row
+        for row in customer_changes
+        if row["revenue_change"] > 0
+    ]
+
+    declining.sort(
+        key=lambda row:
+        row["revenue_change"]
+    )
+
+    increasing.sort(
+        key=lambda row:
+        row["revenue_change"],
+        reverse=True
+    )
+
+    return {
+
+        "declining_customers":
+            declining[:5],
+
+        "growing_customers":
+            increasing[:5]
+    }
+
+
+# --------------------------------
+# Product Changes
+# --------------------------------
+
+def get_product_changes(
+    connection,
+    previous_month,
+    current_month
+):
+
+    query = """
+
+        SELECT
+
+            p.product_id,
+
+            p.product_name,
+
+            p.category,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS previous_revenue,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS current_revenue,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            )
+            -
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN MONTH(o.order_date) = %s
+                        THEN o.sales
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS revenue_change
+
+        FROM orders o
+
+        JOIN products p
+            ON o.product_id = p.product_id
+
+        WHERE MONTH(o.order_date)
+        IN (%s, %s)
+
+        GROUP BY
+
+            p.product_id,
+            p.product_name,
+            p.category
+
+        ORDER BY revenue_change ASC
+    """
+
+    cursor = connection.cursor(
+        dictionary=True
+    )
+
+    cursor.execute(
+        query,
+        (
+            previous_month,
+            current_month,
+            current_month,
+            previous_month,
+            previous_month,
+            current_month
+        )
+    )
+
+    result = cursor.fetchall()
+
+    cursor.close()
+
+    return result
+
+
+# --------------------------------
+# Identify Product Drivers
+# --------------------------------
+
+def identify_product_drivers(
+    product_changes
+):
+
+    declining = [
+        row
+        for row in product_changes
+        if row["revenue_change"] < 0
+    ]
+
+    increasing = [
+        row
+        for row in product_changes
+        if row["revenue_change"] > 0
+    ]
+
+    declining.sort(
+        key=lambda row:
+        row["revenue_change"]
+    )
+
+    increasing.sort(
+        key=lambda row:
+        row["revenue_change"],
+        reverse=True
+    )
+
+    return {
+
+        "declining_products":
+            declining[:5],
+
+        "growing_products":
+            increasing[:5]
+    }
+
+
+# --------------------------------
+# Main Revenue Investigation
+# --------------------------------
+
+def investigate_revenue_change(
     previous_month,
     current_month
 ):
 
     connection = get_connection()
 
-    customers_query = """
-        SELECT *
-        FROM customers
-    """
+    try:
 
-    customers_df = pd.read_sql(
-        customers_query,
-        connection
-    )
-
-    connection.close()
-
-    orders = orders.copy()
-
-    orders["order_date"] = pd.to_datetime(
-        orders["order_date"]
-    )
-
-    orders["month"] = (
-        orders["order_date"].dt.month
-    )
-
-    merged = orders.merge(
-        customers_df,
-        on="customer_id",
-        how="left"
-    )
-
-    previous = (
-        merged[
-            merged["month"] == previous_month
-        ]
-        .groupby("customer_name")["sales"]
-        .sum()
-        .reset_index()
-        .rename(
-            columns={"sales": "revenue_previous"}
+        comparison = compare_months(
+            connection,
+            previous_month,
+            current_month
         )
-    )
 
-    current = (
-        merged[
-            merged["month"] == current_month
-        ]
-        .groupby("customer_name")["sales"]
-        .sum()
-        .reset_index()
-        .rename(
-            columns={"sales": "revenue_current"}
+        category_changes = get_category_changes(
+            connection,
+            previous_month,
+            current_month
         )
-    )
 
-    comparison = previous.merge(
-        current,
-        on="customer_name",
-        how="outer"
-    )
-
-    comparison["revenue_previous"] = (
-        comparison["revenue_previous"]
-        .fillna(0)
-    )
-
-    comparison["revenue_current"] = (
-        comparison["revenue_current"]
-        .fillna(0)
-    )
-
-    comparison["revenue_change"] = (
-        comparison["revenue_current"]
-        -
-        comparison["revenue_previous"]
-    )
-
-    return comparison.sort_values(
-        "revenue_change"
-    )
-
-def calculate_customer_contribution(
-    customer_changes,
-    total_revenue_change
-):
-
-    result = customer_changes.copy()
-
-    if total_revenue_change >= 0:
-        return result
-
-    result["contribution"] = (
-        result["revenue_change"]
-        / total_revenue_change
-    ) * 100
-
-    return result
-
-def find_top_declining_customer(
-    customer_contribution
-):
-
-    declining = customer_contribution[
-        customer_contribution["revenue_change"] < 0
-    ]
-
-    if declining.empty:
-        return None
-
-    return declining.iloc[0]
-
-
-def analyze_order_metrics(
-    orders,
-    previous_month,
-    current_month
-):
-
-    orders = orders.copy()
-
-    orders["order_date"] = pd.to_datetime(
-        orders["order_date"]
-    )
-
-    orders["month"] = (
-        orders["order_date"].dt.month
-    )
-
-    previous = orders[
-        orders["month"] == previous_month
-    ]
-
-    current = orders[
-        orders["month"] == current_month
-    ]
-
-    previous_orders = len(previous)
-    current_orders = len(current)
-
-    previous_revenue = previous["sales"].sum()
-    current_revenue = current["sales"].sum()
-
-    previous_aov = (
-        previous_revenue / previous_orders
-        if previous_orders > 0
-        else 0
-    )
-
-    current_aov = (
-        current_revenue / current_orders
-        if current_orders > 0
-        else 0
-    )
-
-    return {
-        "previous_orders": previous_orders,
-        "current_orders": current_orders,
-        "order_change": (
-            current_orders - previous_orders
-        ),
-        "previous_aov": previous_aov,
-        "current_aov": current_aov,
-        "aov_change": (
-            current_aov - previous_aov
+        customer_changes = get_customer_changes(
+            connection,
+            previous_month,
+            current_month
         )
-    }
 
-def investigate_revenue_drop(
-    previous_month,
-    current_month
-):
-
-    orders = load_orders()
-
-    monthly_revenue = analyze_monthly_revenue(
-        orders
-    )
-
-    revenue_comparison = compare_revenue(
-        monthly_revenue,
-        previous_month,
-        current_month
-    )
-
-    if revenue_comparison is None:
-        return None
-
-    total_change = (
-        revenue_comparison["revenue_change"]
-    )
-
-    category_changes = get_category_changes(
-        orders,
-        previous_month,
-        current_month
-    )
-
-    category_contribution = (
-        calculate_category_contribution(
-            category_changes,
-            total_change
+        product_changes = get_product_changes(
+            connection,
+            previous_month,
+            current_month
         )
-    )
 
-    customer_changes = analyze_customer_changes(
-        orders,
-        previous_month,
-        current_month
-    )
+        return {
 
-    customer_contribution = (
-        calculate_customer_contribution(
-            customer_changes,
-            total_change
-        )
-    )
+            "comparison": comparison,
 
-    order_metrics = analyze_order_metrics(
-        orders,
-        previous_month,
-        current_month
-    )
+            "categories":
+                identify_category_drivers(
+                    category_changes
+                ),
 
-    return {
-        "revenue_comparison": revenue_comparison,
-        "category_analysis": category_contribution,
-        "customer_analysis": customer_contribution,
-        "order_metrics": order_metrics
-    }
+            "customers":
+                identify_customer_drivers(
+                    customer_changes
+                ),
 
+            "products":
+                identify_product_drivers(
+                    product_changes
+                )
+        }
+
+    finally:
+
+        connection.close()
+
+
+# --------------------------------
+# Test
+# --------------------------------
 
 if __name__ == "__main__":
 
-    investigation = investigate_revenue_drop(
-        1,
-        2
+    question = "Why did revenue drop in March?"
+
+    current_month = extract_month(
+        question
     )
 
-    print("\nRevenue Comparison:")
-    print(
-        investigation["revenue_comparison"]
+    previous_month = get_previous_month(
+        current_month
     )
 
-    print("\nCategory Analysis:")
     print(
-        investigation["category_analysis"]
+        "Question:",
+        question
     )
 
-    print("\nCustomer Analysis:")
     print(
-        investigation["customer_analysis"]
+        "Previous Month:",
+        previous_month
     )
 
-    print("\nOrder Metrics:")
     print(
-        investigation["order_metrics"]
+        "Current Month:",
+        current_month
     )
+
+    if current_month is not None:
+
+        result = investigate_revenue_change(
+            previous_month,
+            current_month
+        )
+
+        print("\nRevenue Investigation:")
+
+        print(result)
