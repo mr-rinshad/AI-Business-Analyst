@@ -3,7 +3,8 @@ from analysis.llm_client import ask_llm
 
 def generate_investigation_answer(
     question,
-    investigation
+    investigation,
+    direction_check
 ):
 
     comparison = investigation["comparison"]
@@ -40,6 +41,8 @@ CUSTOMER ANALYSIS:
 PRODUCT ANALYSIS:
 {products}
 
+DIRECTION CHECK:
+{direction_check}
 
 RULES:
 

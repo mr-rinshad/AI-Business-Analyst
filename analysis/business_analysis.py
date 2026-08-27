@@ -19,37 +19,88 @@ def calculate_percentage_change(previous, current):
         (current - previous) / previous
     ) * 100
 
-
 # --------------------------------
 # Extract Month From Question
 # --------------------------------
 
 def extract_month(question):
 
-    question = question.lower()
+    question = question.lower().strip()
 
     months = {
         "january": 1,
+        "jan": 1,
+
         "february": 2,
+        "feb": 2,
+
         "march": 3,
+        "mar": 3,
+
         "april": 4,
+        "apr": 4,
+
         "may": 5,
+
         "june": 6,
+        "jun": 6,
+
         "july": 7,
+        "jul": 7,
+
         "august": 8,
+        "aug": 8,
+
         "september": 9,
+        "sep": 9,
+        "sept": 9,
+
         "october": 10,
+        "oct": 10,
+
         "november": 11,
-        "december": 12
+        "nov": 11,
+
+        "december": 12,
+        "dec": 12
     }
 
-    for month_name, month_number in months.items():
+    # Sort longer names first
+    # so "march" is checked before "mar"
+    month_names = sorted(
+        months.keys(),
+        key=len,
+        reverse=True
+    )
 
-        if month_name in question:
-            return month_number
+    for month_name in month_names:
+
+        pattern = rf"\b{re.escape(month_name)}\b"
+
+        if re.search(pattern, question):
+
+            return months[month_name]
 
     return None
 
+# --------------------------------
+# Extract Year From Question
+# --------------------------------
+
+def extract_year(question):
+
+    match = re.search(
+        r"\b(20\d{2})\b",
+        question
+    )
+
+    if match:
+
+        return int(
+            match.group(1)
+        )
+
+    return None
 
 # --------------------------------
 # Get Previous Month
@@ -62,6 +113,29 @@ def get_previous_month(month):
 
     return month - 1
 
+
+# --------------------------------
+# Get Analysis Period
+# --------------------------------
+
+def get_analysis_period(question):
+
+    current_month = extract_month(
+        question
+    )
+
+    if current_month is None:
+
+        return None
+
+    current_year = extract_year(
+        question
+    )
+
+    return {
+        "current_month": current_month,
+        "current_year": current_year
+    }
 
 # --------------------------------
 # Get Monthly Metrics
@@ -697,45 +771,98 @@ def investigate_revenue_change(
 
         connection.close()
 
+# --------------------------------
+# Detect Revenue Direction
+# --------------------------------
 
+def extract_revenue_direction(question):
+
+    question = question.lower()
+
+    if re.search(
+        r"\b(decrease|decreased|decline|declined|drop|dropped|fall|fell|down)\b",
+        question
+    ):
+
+        return "decrease"
+
+    if re.search(
+        r"\b(increase|increased|growth|grew|rise|rose|up)\b",
+        question
+    ):
+
+        return "increase"
+
+    return None
+
+# --------------------------------
+# Validate Revenue Direction
+# --------------------------------
+
+def validate_revenue_direction(
+    question,
+    comparison
+):
+
+    requested_direction = (
+        extract_revenue_direction(
+            question
+        )
+    )
+
+    revenue_change = (
+        comparison["revenue_change"]
+    )
+
+    if revenue_change > 0:
+
+        actual_direction = "increase"
+
+    elif revenue_change < 0:
+
+        actual_direction = "decrease"
+
+    else:
+
+        actual_direction = "no_change"
+
+    return {
+
+        "requested_direction":
+            requested_direction,
+
+        "actual_direction":
+            actual_direction,
+
+        "matches":
+            (
+                requested_direction is None
+                or requested_direction
+                == actual_direction
+            )
+    }
 # --------------------------------
 # Test
 # --------------------------------
-
 if __name__ == "__main__":
 
-    question = "Why did revenue drop in March?"
+    questions = [
 
-    current_month = extract_month(
-        question
-    )
+        "Why did revenue change in March 2026?",
 
-    previous_month = get_previous_month(
-        current_month
-    )
+        "Why did revenue change in February 2025?",
 
-    print(
-        "Question:",
-        question
-    )
+        "Why did revenue change in April?"
+    ]
 
-    print(
-        "Previous Month:",
-        previous_month
-    )
+    for question in questions:
 
-    print(
-        "Current Month:",
-        current_month
-    )
-
-    if current_month is not None:
-
-        result = investigate_revenue_change(
-            previous_month,
-            current_month
+        period = get_analysis_period(
+            question
         )
 
-        print("\nRevenue Investigation:")
-
-        print(result)
+        print(
+            question,
+            "->",
+            period
+        )
