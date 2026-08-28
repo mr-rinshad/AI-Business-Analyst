@@ -14,6 +14,8 @@ from analysis.business_analysis import (
 )
 from analysis.intent_detector import detect_intent
 from analysis.metric_detector import detect_metric
+from analysis.dimension_detector import detect_dimension
+from analysis.router import route_analysis
 from analysis.investigation_answer import generate_investigation_answer
 from analysis.sql_executor import execute_sql
 from analysis.sql_generator import generate_sql
@@ -115,6 +117,9 @@ def ask_business_question(request: QuestionRequest):
 
         metric = detect_metric(question)
 
+        dimension = detect_dimension(question)
+
+        route = route_analysis(intent,metric,dimension)
         # --------------------------------
         # INVESTIGATION
         # --------------------------------
@@ -153,6 +158,8 @@ def ask_business_question(request: QuestionRequest):
                 "question": question,
                 "intent": intent,
                 "metric": metric,
+                "dimension": dimension,
+                "route": route,
                 "answer": answer,
                 "analysis": convert_to_json_safe(investigation),
             }
@@ -175,6 +182,8 @@ def ask_business_question(request: QuestionRequest):
             "question": question,
             "intent": intent,
             "metric": metric,
+            "dimension": dimension,
+            "route": route,
             "sql": sql,
             "data": data,
             "answer": answer,
