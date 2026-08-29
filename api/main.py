@@ -286,6 +286,12 @@ def ask_business_question(
 
         raise
 
+    except ValueError as error:
+
+        raise HTTPException(
+        status_code=400,
+        detail=str(error)
+        )
 
     # --------------------------------
     # Handle Unexpected Errors

@@ -47,11 +47,18 @@ def get_investigation_months(question):
             "Please specify two months for comparison."
         )
 
+    if len(months) > 2:
+
+        raise ValueError(
+            "Please specify exactly two months for comparison."
+        )
+
     previous_month = months[0][1]
 
     current_month = months[1][1]
 
     return previous_month, current_month
+
 
 # --------------------------------
 # Test
@@ -63,11 +70,9 @@ if __name__ == "__main__":
 
         "Why did revenue change from February to March?",
 
-        "Why did sales decrease in January?",
+        "Compare revenue between January and February.",
 
-        "Compare revenue between February and March.",
-
-        "Show March revenue."
+        "Why did sales decrease from March to April."
 
     ]
 
@@ -76,5 +81,5 @@ if __name__ == "__main__":
         print(
             question,
             "→",
-            extract_months(question)
+            get_investigation_months(question)
         )
